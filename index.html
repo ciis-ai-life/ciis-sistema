@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CIIS — Identificación Biométrica</title>
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
+    <style>
+        :root {
+            --ciis-oro: #d4af37;
+            --ciis-oscuro: #0f172a;
+            --ciis-azul: #1e3a5f;
+            --ciis-exito: #059669;
+            --ciis-error: #b91c1c;
+            --fondo: #f8fafc;
+            --texto: #1e293b;
+        }
+        * {margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI', serif;}
+        body {
+            background: linear-gradient(160deg, var(--ciis-oscuro) 0%, var(--ciis-azul) 55%, #1a4d6b 100%);
+            min-height: 100vh; padding: 20px; color: white;
+        }
+        .contenedor {max-width: 480px; margin: 0 auto;}
+        .cabecera {text-align: center; margin-bottom: 25px;}
+        .cabecera h1 {font-size: 1.8rem; font-weight: 800; letter-spacing: 3px; color: var(--ciis-oro); margin-bottom: 4px;}
+        .subtitulo {font-size: 0.85rem; color: #cbd5e1;}
+        .aviso-bloqueo {background: #fef2f2; border-left: 4px solid #ef4444; color: #991b1b; padding: 15px; border-radius: 8px; margin: 15px 0; font-size: 0.9rem;}
+        .tarjeta {background: white; color: var(--texto); border-radius: 16px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.35);}
+        .pestañas {display: flex; background: #f1f5f9;}
+        .pestaña {flex: 1; padding: 14px; text-align: center; cursor: pointer; font-weight: 600; color: #64748b; transition: all 0.3s; border-bottom: 3px solid transparent;}
+        .pestaña.activa {background: white; color: var(--ciis-azul); border-bottom-color: var(--ciis-oro);}
+        .cuerpo {padding: 25px;}
+        .paso {display: none; animation: aparecer 0.35s ease forwards;}
+        .paso.visible {display: block;}
+        @keyframes aparecer {from {opacity:0; transform: translateY(10px);} to {opacity:1; transform: translateY(0);}}
+        .indicador {text-align: center; font-size: 0.8rem; color: #94a3b8; margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px dashed #e2e8f0;}
+        label {display: block; margin-bottom: 5px; font-weight: 600; color: var(--ciis-azul); font-size: 0.9rem;}
+        input {width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; margin-bottom: 16px;}
+        input:focus {outline: none; border-color: var(--ciis-oro); box-shadow: 0 0 0 3px rgba(212,175,55,0.15);}
+        .camara-caja {position: relative; width: 100%; aspect-ratio: 4/3; background: #111; border-radius: 12px; overflow: hidden; margin: 15px 0; display: flex; align-items: center; justify-content: center;}
+        video {width: 100%; height: 100%; object-fit: cover; position: absolute;}
+        .marco-rostro {position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 65%; height: 75%; border: 3px dashed rgba(212,175,55,0.6); border-radius: 50%; pointer-events: none; z-index: 5;}
+        .estado-camara {position: absolute; color: white; z-index: 10; text-align: center; padding: 20px; font-size: 0.9rem;}
+        .boton {width: 100%; padding: 14px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.25s;}
+        .boton:hover {transform: translateY(-2px);}
+        .boton:disabled {opacity: 0.5; cursor: not-allowed; transform: none;}
+        .boton-dorado {background: linear-gradient(90deg, #b8860b, var(--ciis-oro)); color: white;}
+        .boton-azul {background: var(--ciis-azul); color: white;}
+        .boton-verde {background: var(--ciis-exito); color: white; margin-top: 10px;}
+        .boton-gris {background: #e2e8f0; color: #475569; margin-top: 10px;}
+        .mensaje {margin-top: 15px; padding: 12px; border-radius: 8px; font-size: 0.9rem; display: none;}
+        .mensaje.ok {background: #f0fdf4; color: #166534; display: block; border-left: 3px solid var(--ciis-exito);}
+        .mensaje.error {background: #fef2f2; color: #991b1b; display: block; border-left: 3px solid var(--ciis-error);}
+        .datos-autos {background: #f8fafc; border-radius: 8px; padding: 15px; margin: 18px 0; border: 1px solid #e2e8f0;}
+        .dato-linea {display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dotted #e2e8f0; flex-wrap: wrap; gap: 4px;}
+        .etiqueta {font-weight: 500; color: #64748b; font-size: 0.85rem;}
+        .valor {font-weight: 600; color: var(--ciis-azul); font-size: 0.85rem;}
+        .nota-pie {font-size: 0.75rem; color: #94a3b8; margin-top: 20px; text-align: center; line-height: 1.4;}
+    </style>
+</head>
+<body>
+
+<div class="contenedor">
+    <div class="cabecera">
+        <h1>C I I S</h1>
+        <p class="subtitulo">Centro de Investigación de Identidad Soberana</p>
+    </div>
+
+    <div class="tarjeta">
+        <div class="pestañas">
+            <div class="pestaña activa" data-seccion="registro">Registro</div>
+            <div class="pestaña" data-seccion="acceso">Acceso</div>
+        </div>
+
+        <div class="cuerpo">
+            <div id="sec-registro" class="paso visible">
+                <div id="reg-p1" class="subpaso visible">
+                    <div class="indicador">Paso 1 de 4 — Datos Personales</div>
+                    <label>Nombre(s)</label>
+                    <input type="text" id="nombres" placeholder="Tu nombre completo" required>
+                    <label>Apellido Paterno</label>
+                    <input type="text" id="ap-paterno" placeholder="Primer apellido" required>
+                    <label>Apellido Materno</label>
+                    <input type="text" id="ap-materno" placeholder="Segundo apellido" required>
+                    <label>WhatsApp (contacto)</label>
+                    <input type="tel" id="whatsapp" placeholder="+52 123 456 7890" required>
+                    <button class="boton boton-dorado" onclick="siguientePaso(2)">Continuar →</button>
+                </div>
+
+                <div id="reg-p2" class="subpaso">
+                    <div class="indicador">Paso 2 de 4 — Reconocimiento Facial</div>
+                    
+                    <div id="aviso-sin-camara" class="aviso-bloqueo" style="display:none;">
+                        ⚠️ <strong>Google Sites bloquea la cámara automáticamente.</strong><br>
+                        La solución es abrir esta página en una pestaña nueva o usar un hosting gratuito como Netlify/GitHub Pages.
+                    </div>
+                    
+                    <div class="camara-caja">
+                        <div id="estado-camara-reg" class="estado-camara">🔄 Solicitando acceso...</div>
+                        <video id="video-reg" autoplay muted playsinline style="display:none;"></video>
+                        <div class="marco-rostro"></div>
+                    </div>
+                    
+                    <button id="btn-capturar" class="boton boton-azul" disabled>📸 Capturar Rostro</button>
+                    <div id="msg-p2" class="mensaje"></div>
+                    <button class="boton boton-gris" onclick="siguientePaso(1)">← Volver</button>
+                </div>
+
+                <div id="reg-p3" class="subpaso">
+                    <div class="indicador">Paso 3 de 4 — Verificación Registral</div>
+                    <label>CURP</label>
+                    <input type="text" id="curp" placeholder="ABCD123456HMN..." maxlength="18" oninput="procesarCURP(this.value.toUpperCase())">
+                    <div id="caja-datos-auto" class="datos-autos" style="display:none;">
+                        <h4>🔍 Datos detectados:</h4>
+                        <div class="dato-linea"><span class="etiqueta">Nacimiento:</span><span class="valor" id="dato-fecha">—</span></div>
+                        <div class="dato-linea"><span class="etiqueta">Edad:</span><span class="valor" id="dato-edad">—</span></div>
+                        <div class="dato-linea"><span class="etiqueta">Género:</span><span class="valor" id="dato-genero">—</span></div>
+                        <div class="dato-linea"><span class="etiqueta">Origen:</span><span class="valor" id="dato-origen">—</span></div>
+                    </div>
+                    <div id="msg-p3" class="mensaje"></div>
+                    <button class="boton boton-dorado" id="btn-p4" style="display:none;" onclick="siguientePaso(4)">Confirmar →</button>
+                    <button class="boton boton-gris" onclick="siguientePaso(2)">← Volver</button>
+                </div>
+
+                <div id="reg-p4" class="subpaso">
+                    <div class="indicador">Paso 4 de 4 — Ficha Completa</div>
+                    <div class="datos-autos">
+                        <h4>📋 Identidad CIIS</h4>
+                        <div class="dato-linea"><span class="etiqueta">Nombre:</span><span class="valor" id="final-nombre">—</span></div>
+                        <div class="dato-linea"><span class="etiqueta">WhatsApp:</span><span class="valor" id="final-whatsapp">—</span></div>
+                        <div class="dato-linea"><span class="etiqueta">CURP:</span><span class="valor" id="final-curp">—</span></div>
+                        <div class="dato-linea"><span class="etiqueta">Nacimiento:</span><span class="valor" id="final-fecha">—</span></div>
+                        <div class="dato-linea"><span class="etiqueta">Edad:</span><span class="valor" id="final-edad">—</span></div>
+                        <div class="dato-linea"><span class="etiqueta">Origen:</span><span class="valor" id="final-origen">—</span></div>
+                    </div>
+                    <button id="btn-guardar" class="boton boton-verde">🔐 Registrar en Base de Datos</button>
+                    <div id="msg-p4" class="mensaje"></div>
+                </div>
+            </div>
+
+            <div id="sec-acceso" class="paso">
+                <div class="indicador">Verificación Biométrica</div>
+                <label>CURP, WhatsApp o Nombre</label>
+                <input type="text" id="id-acceso" placeholder="Tus datos de registro">
+                <div class="camara-caja">
+                    <div id="estado-camara-acceso" class="estado-camara">🔄 Solicitando acceso...</div>
+                    <video id="video-acceso" autoplay muted playsinline style="display:none;"></video>
+                    <div class="marco-rostro"></div>
+                </div>
+                <button id="btn-verificar" class="boton boton-dorado" disabled>🔍 Reconocer</button>
+                <div id="msg-acceso" class="mensaje"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const URL_GOOGLE_APPS_SCRIPT = 'https://script.google.com/macros/s/AKfycbyCcE-rm77pQTikseozHag38rF1ulMC433kvtNF2jVtaL03sHcDctaz-EYQPEQmfYTXHA/exec';
+
+let modelosListos = false, huellaFacial = null, datosPersona = {}, camaraActiva = null;
+const UMBRAL = 0.62;
+
+document.querySelectorAll('.pestaña').forEach(tab => {
+    tab.addEventListener('click', async () => {
+        document.querySelectorAll('.pestaña').forEach(t => t.classList.remove('activa'));
+        document.querySelectorAll('.paso').forEach(p => p.classList.remove('visible'));
+        tab.classList.add('activa');
+        const sec = tab.dataset.seccion;
+        document.getElementById(`sec-${sec}`).classList.add('visible');
+        if (!modelosListos) await cargarModelos();
+        if (sec === 'registro') iniciarCamara('reg');
+        if (sec === 'acceso') iniciarCamara('acceso');
+    });
+});
+
+function siguientePaso(n) {
+    document.querySelectorAll('.subpaso').forEach(s => s.classList.remove('visible'));
+    document.getElementById(`reg-p${n}`).classList.add('visible');
+    if (n === 2) iniciarCamara('reg');
+}
+
+async function cargarModelos() {
+    try {
+        const ruta = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/';
+        await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri(ruta),
+            faceapi.nets.faceLandmark68Net.loadFromUri(ruta),
+            faceapi.nets.faceRecognitionNet.loadFromUri(ruta)
+        ]);
+        modelosListos = true;
+        document.getElementById('btn-capturar').disabled = false;
+        document.getElementById('btn-verificar').disabled = false;
+    } catch (e) { console.error('Modelos:', e); }
+}
+
+async function iniciarCamara(tipo) {
+    if (camaraActiva) camaraActiva.getTracks().forEach(t => t.stop());
+    const estado = document.getElementById(`estado-camara-${tipo}`);
+    const video = document.getElementById(`video-${tipo}`);
+    const avisoBloqueo = document.getElementById('aviso-sin-camara');
+    
+    try {
+        estado.textContent = "🔄 Pidiendo permiso...";
+        camaraActiva = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+        video.srcObject = camaraActiva;
+        await video.play();
+        estado.style.display = 'none';
+        video.style.display = 'block';
+        if (avisoBloqueo) avisoBloqueo.style.display = 'none';
+    } catch (e) {
+        console.error('Cámara:', e.name, e.message);
+        if (avisoBloqueo) avisoBloqueo.style.display = 'block';
+        if (e.name === 'NotAllowedError') {
+            estado.innerHTML = "❌ Permiso denegado<br>🔓 Pulsa el candado 🔒 en la barra de direcciones y permite la cámara";
+        } else if (e.name === 'NotFoundError') {
+            estado.innerHTML = "❌ No hay cámara conectada";
+        } else if (e.message.includes('secure')) {
+            estado.innerHTML = "❌ Necesitas HTTPS<br>Esta página debe abrirse en un enlace seguro";
+        } else {
+            estado.innerHTML = "❌ Bloqueado por Google Sites<br>👉 Usa Netlify o GitHub Pages para alojar la página";
+        }
+    }
+}
+
+document.getElementById('btn-capturar').addEventListener('click', async () => {
+    const nombres = document.getElementById('nombres').value.trim();
+    const paterno = document.getElementById('ap-paterno').value.trim();
+    const materno = document.getElementById('ap-materno').value.trim();
+    const whatsapp = document.getElementById('whatsapp').value.trim();
+    
+    if (!nombres || !paterno || !materno || !whatsapp) {
+        mostrarMsg('p2', '⚠️ Completa todos los datos', 'error');
+        return;
+    }
+    
+    const video = document.getElementById('video-reg');
+    if (!video.srcObject) {
+        mostrarMsg('p2', '❌ La cámara no está activa. Revisa los permisos.', 'error');
+        return;
+    }
+
+    datosPersona = { nombres, apPaterno: paterno, apMaterno: materno, whatsapp };
+    const det = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks().withFaceDescriptor();
+    
+    if (!det) {
+        mostrarMsg('p2', '❌ No se detectó rostro. Acomódate bien de frente con buena luz.', 'error');
+        return;
+    }
+    
+    huellaFacial = Array.from(det.descriptor);
+    mostrarMsg('p2', '✅ Rostro capturado', 'ok');
+    setTimeout(() => siguientePaso(3), 1000);
+});
+
+function procesarCURP(cur) {
+    if (cur.length !== 18) {
+        document.getElementById('caja-datos-auto').style.display = 'none';
+        document.getElementById('btn-p4').style.display = 'none';
+        return;
+    }
+    const anio = cur.substring(4, 6), mes = cur.substring(6, 8), dia = cur.substring(8, 10);
+    const genero = cur.charAt(10), estado = cur.substring(11, 13);
+    const siglo = parseInt(anio) <= 25 ? 2000 : 1900;
+    const fechaNac = new Date(siglo + parseInt(anio), parseInt(mes)-1, parseInt(dia));
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - fechaNac.getFullYear();
+    const m = hoy.getMonth() - fechaNac.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < fechaNac.getDate())) edad--;
+    
+    const mapaGen = { H: 'Masculino', M: 'Femenino' };
+    const mapaEst = {
+        AS:'Aguascalientes',BC:'Baja California',BS:'Baja California Sur',CC:'Campeche',
+        CL:'Coahuila',CM:'Colima',CS:'Chiapas',CH:'Chihuahua',DF:'Ciudad de México',
+        DG:'Durango',GT:'Guanajuato',GR:'Guerrero',HG:'Hidalgo',JC:'Jalisco',
+        MC:'Estado de México',MN:'Michoacán',MS:'Morelos',NT:'Nayarit',NL:'Nuevo León',
+        OC:'Oaxaca',PL:'Puebla',QT:'Querétaro',QR:'Quintana Roo',SP:'San Luis Potosí',
+        SL:'Sinaloa',SR:'Sonora',TC:'Tabasco',TS:'Tamaulipas',TL:'Tlaxcala',
+        VZ:'Veracruz',YN:'Yucatán',ZS:'Zacatecas',NE:'Extranjero'
+    };
+
+    document.getElementById('caja-datos-auto').style.display = 'block';
+    document.getElementById('dato-fecha').textContent = `${dia}/${mes}/${siglo + parseInt(anio)}`;
+    document.getElementById('dato-edad').textContent = `${edad} años`;
+    document.getElementById('dato-genero').textContent = mapaGen[genero] || 'No especificado';
+    document.getElementById('dato-origen').textContent = mapaEst[estado] || 'Desconocido';
+    
+    datosPersona.curp = cur;
+    datosPersona.fechaNac = `${dia}/${mes}/${siglo + parseInt(anio)}`;
+    datosPersona.edad = edad;
+    datosPersona.genero = mapaGen[genero] || 'No especificado';
+    datosPersona.origen = mapaEst[estado] || 'Desconocido';
+    
+    document.getElementById('btn-p4').style.display = 'block';
+}
+
+document.getElementById('btn-p4').addEventListener('click', () => {
+    document.getElementById('final-nombre').textContent = `${datosPersona.nombres} ${datosPersona.apPaterno} ${datosPersona.apMaterno}`;
+    document.getElementById('final-whatsapp').textContent = datosPersona.whatsapp;
+    document.getElementById('final-curp').textContent = datosPersona.curp;
+    document.getElementById('final-fecha').textContent = datosPersona.fechaNac;
+    document.getElementById('final-edad').textContent = `${datosPersona.edad} años`;
+    document.getElementById('final-origen').textContent = datosPersona.origen;
+});
+
+document.getElementById('btn-guardar').addEventListener('click', async () => {
+    const todo = { ...datosPersona, huella: huellaFacial, fechaRegistro: new Date().toISOString() };
+    try {
+        await fetch(URL_GOOGLE_APPS_SCRIPT, {
+            method: 'POST', mode: 'no-cors',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(todo)
+        });
+        mostrarMsg('p4', `✅ REGISTRADO\n\nNombre: ${datosPersona.nombres}\nOrigen: ${datosPersona.origen}\nEdad: ${datosPersona.edad} años`, 'ok');
+    } catch {
+        localStorage.setItem('ciis_' + datosPersona.curp, JSON.stringify(todo));
+        mostrarMsg('p4', '✅ Guardado localmente', 'ok');
+    }
+});
+
+document.getElementById('btn-verificar').addEventListener('click', async () => {
+    const id = document.getElementById('id-acceso').value.trim().toUpperCase();
+    const video = document.getElementById('video-acceso');
+    if (!video.srcObject) { mostrarMsg('acceso', '❌ Cámara no activa', 'error'); return; }
+    
+    let reg = null;
+    for (let i=0; i<localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k.startsWith('ciis_')) {
+            const r = JSON.parse(localStorage.getItem(k));
+            if (r.curp === id || `${r.nombres} ${r.apPaterno} ${r.apMaterno}`.toUpperCase().includes(id) || r.whatsapp === id) { reg = r; break; }
+        }
+    }
+    if (!reg) { mostrarMsg('acceso', '❌ No encontrado. Regístrate primero.', 'error'); return; }
+
+    const det = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+    if (!det) { mostrarMsg('acceso', '❌ No se detectó rostro', 'error'); return; }
+    
+    const dist = faceapi.euclideanDistance(new Float32Array(reg.huella), det.descriptor);
+    const coinc = ((1 - dist) * 100).toFixed(1);
+    
+    if (dist < UMBRAL) {
+        mostrarMsg('acceso', `✅ ACCESO CONCEDIDO — ${reg.nombres}\n\nCoincidencia: ${coinc}%\nOrigen: ${reg.origen}\nEdad: ${reg.edad} años`, 'ok');
+    } else {
+        mostrarMsg('acceso', `❌ No coincide (${coinc}%)`, 'error');
+    }
+});
+
+function mostrarMsg(paso, texto, tipo) {
+    const c = document.getElementById(`msg-${paso}`);
+    c.className = `mensaje ${tipo}`;
+    c.innerHTML = texto.replace(/\n/g, '<br>');
+}
+</script>
+</body>
+</html>
